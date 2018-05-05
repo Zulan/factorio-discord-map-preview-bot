@@ -1,6 +1,5 @@
 import click
 import click_log
-import discord
 import os
 
 from .logging import logger

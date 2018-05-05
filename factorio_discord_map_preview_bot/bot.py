@@ -15,6 +15,24 @@ class Bot(discord.Client):
         self.dir = dir
         self.owner_id = owner_id
         self.owner = None
+        self.entity_emojis = {}
+
+    def format_entity_count(self, count):
+        if count > 10000000:
+            return '{:.1f}M'.format(count / 1000000)
+        if count > 10000:
+            return '{:.1f}l'.format(count / 1000)
+        return int(count)
+
+    def format_entity_name(self, name):
+        try:
+            return self.entity_emojis[name]
+        except KeyError:
+            return '[{}]'.format(name)
+
+    def format_entity(self, name, count):
+        return '{} {}'.format(self.format_entity_name(name),
+                              self.format_entity_count(count))
 
     def format_dir(self, fmt, *args, **kwargs):
         return os.path.join(self.dir, fmt.format(*args, **kwargs))
@@ -25,6 +43,12 @@ class Bot(discord.Client):
             self.owner = await self.get_user_info(self.owner_id)
             logger.info('Got owner info {}', self.owner)
             await self.send_message(self.owner, "I'm ready")
+
+        for emoji in self.get_all_emojis():
+            name = emoji.name.replace('_', '-')
+            if name in self.preview.entities:
+                self.entity_emojis[name] = emoji
+                logger.info('Found emoji for {}: {}', name, emoji)
 
     async def on_error(self, event_method, *args, **kwargs):
         message = 'Exception in {} ({}, {}): {}'.format(event_method, args, kwargs, traceback.format_exc())
@@ -54,7 +78,7 @@ class Bot(discord.Client):
                 raise e
 
             try:
-                self.preview(maps_gen_settings_path, image_path, log_path)
+                entities = await self.preview(maps_gen_settings_path, image_path, log_path)
             except Exception as e:
                 await self.send_message(
                     message.channel,
@@ -63,7 +87,8 @@ class Bot(discord.Client):
                 raise e
 
             logger.info('completed request {} in {} s', uid, time.time() - time_start)
+            entity_info = ', '.join(self.format_entity(*e) for e in entities.items())
             await self.send_file(
                 message.channel, image_path,
-                content="Here's your preview {}, have fun.".format(message.author.mention)
+                content="Here's your preview {}: {}".format(message.author.mention, entity_info)
             )
