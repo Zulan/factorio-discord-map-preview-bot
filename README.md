@@ -1,0 +1,1 @@
+I am a bot for discord. I generate preview pictures of Factorio maps.
