@@ -98,9 +98,9 @@ class Bot(discord.Client):
 
             map_string = ''.join(command)
             uid = uuid.uuid4().hex
-            image_path = self.format_dir('preview-{}.png', uid)
-            maps_gen_settings_path = self.format_dir('mapstring-{}.lua', uid)
-            log_path = self.format_dir('log-{}.log', uid)
+            image_path = self.format_dir('{}.png', uid)
+            maps_gen_settings_path = self.format_dir('{}.json', uid)
+            log_path = self.format_dir('{}.log', uid)
 
             map_string_to_file(map_string, maps_gen_settings_path)
 

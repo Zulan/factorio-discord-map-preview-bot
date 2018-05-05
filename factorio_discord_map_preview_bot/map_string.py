@@ -2,118 +2,199 @@ import base64
 import zlib
 import io
 import struct
+import json
+from collections import OrderedDict
+from abc import ABC, abstractmethod
 
-
-def unpack(stream, fmt):
-    size = struct.calcsize('!' + fmt)
-    buf = stream.read(size)
-    return struct.unpack(fmt, buf)
-
-
-def parse_map_gen_settings(buf):
-    pass
-
-
-def parse_map_settings(buf):
-    pass
+#from .error import BotError
 
 
 def parse_frame(map_string):
     return map_string.lstrip('>').rstrip('<').replace('\n', '').replace(' ', '')
 
 
-def parse_uint(buf):
-    num, = unpack(buf, 'B')
-    if num < 255:
+class Deserializer:
+    def __init__(self, buffer):
+        self._buffer = buffer
+        self.version = self.unpack('hhhh')
+
+    def parse_uint(self):
+        num, = self.unpack('B')
+        if num < 255:
+            return num
+        num, = self.unpack('I')
         return num
-    num, = unpack(buf, 'I')
-    return num
+
+    def unpack(self, fmt):
+        fmt = '<' + fmt
+        size = struct.calcsize(fmt)
+        buf = self._buffer.read(size)
+        return struct.unpack(fmt, buf)
 
 
-def parse_string(buf):
-    length = parse_uint(buf)
-    str = buf.read(length).decode()
-    return str
+class FactorioType(ABC):
+    @abstractmethod
+    def native(self):
+        pass
+
+    def __repr__(self):
+        return str(self)
 
 
-def parse_scale_byte(buf):
-    b, = unpack(buf, 'B')
-    return {
-        255: 'WTF',
-        0: 'none',
-        1: 'very-low',
-        2: 'low',
-        3: 'normal',
-        4: 'high',
-        5: 'very-high',
-    }[b]
+def native(thing):
+    if isinstance(thing, FactorioType):
+        return thing.native()
+    return thing
 
 
-def parse_autoplace_control(buf):
-    apc = dict()
-    apc['frequency'] = parse_scale_byte(buf)
-    apc['size'] = parse_scale_byte(buf)
-    apc['richness'] = parse_scale_byte(buf)
-    return apc
+class FactorioSingleType(FactorioType):
+    __slots__ = 'value',
+
+    def __str__(self):
+        return str(self.value)
+
+    def native(self):
+        return self.value
 
 
-def parse_dict(buf, key_parser=parse_string, value_parser=parse_autoplace_control):
-    length = parse_uint(buf)
-    #return {
-    #    key_parser(buf): value_parser(buf)
-    #    for _ in range(length)
-    #}
-    d = dict()
-    for i in range(length):
-        key = key_parser(buf)
-        d[key] = value_parser(buf)
+class FactorioStructType(FactorioType):
+    def __str__(self):
+        return str(self.__dict__)
 
-    return d
+    def native(self):
+        return {key: native(value) for key, value in self.__dict__.items()}
 
 
-def parse_vector(buf, parser):
-    length = parse_uint(buf)
-    return [parser(buf) for _ in range(length)]
+class String(FactorioSingleType):
+    def __init__(self, deserializer):
+        length = deserializer.parse_uint()
+        self.value = deserializer._buffer.read(length).decode('ascii')
 
 
-def parse_coordinate(buf):
-    x, = unpack(buf, 'i')
-    return x / (1 << 8)
+class MapGenSize(FactorioSingleType):
+    def __init__(self, deserializer):
+        self.value, = deserializer.unpack('B')
+
+    def __str__(self):
+        return {
+            0: 'none',
+            1: 'very-low',
+            2: 'low',
+            3: 'normal',
+            4: 'high',
+            5: 'very-high',
+        }[self.value]
+
+    def native(self):
+        return str(self)
 
 
-def parse_map_position(buf):
-    xdiff, = unpack(buf, 'h')
-    if xdiff == 32767:
-        x = parse_coordinate(buf)
-        y = parse_coordinate(buf)
-    else:
-        ydiff, = unpack(buf, 'h')
-        # TODO last loaded position?!
-        x = xdiff
-        y = ydiff
-
-    return {'x': x, 'y': y}
+class FrequencySizeRichness(FactorioStructType):
+    def __init__(self, deserializer):
+        self.frequency = MapGenSize(deserializer)
+        self.size = MapGenSize(deserializer)
+        self.richness = MapGenSize(deserializer)
 
 
-def parse_real_orientation(buf):
-    orientation, = unpack(buf, 'f')
-    return orientation
+class StringMap(FactorioType):
+    def __init__(self, deserializer, value_type):
+        length = deserializer.parse_uint()
+        self.values = OrderedDict()
+        for _ in range(length):
+            key = String(deserializer)
+            value = value_type(deserializer)
+            self.values[key] = value
+
+    def __str__(self):
+        return str(self.values)
+
+    def native(self):
+        return {native(key): native(value) for key, value in self.values.items()}
 
 
-def parse_bounding_box(buf):
-    bb = dict()
-    bb['left-top'] = parse_map_position(buf)
-    bb['right-bottom'] = parse_map_position(buf)
-    bb['orientation'] = parse_real_orientation(buf)
-    return bb
+class Vector(FactorioType):
+    def __init__(self, deserializer, value_type):
+        length = deserializer.parse_uint()
+        self.values = [
+            value_type(deserializer) for _ in range(length)
+        ]
+
+    def __str__(self):
+        return str(self.values)
+
+    def native(self):
+        return [native(value) for value in self.values]
 
 
-def parse_cliff_settings(buf):
-    cs = dict()
-    cs['name'] = parse_string(buf)
-    cs['cliff_elevation0'], = unpack(buf, 'f')
-    cs['cliff_elevation_interval'], = unpack(buf, 'f')
-    return cs
+class Coordinate(FactorioSingleType):
+    def __init__(self, deserializer):
+        # It's a FixedPointNumber
+        x, = deserializer.unpack('i')
+        self.value = x / (1 << 8)
+
+
+class MapPosition(FactorioStructType):
+    def __init__(self, deserializer):
+        xdiff, = deserializer.unpack('h')
+        if xdiff == 32767:
+            self.x = Coordinate(deserializer)
+            self.y = Coordinate(deserializer)
+        else:
+            ydiff, = deserializer.unpack('h')
+            # FIXME add last loaded position coordinate type?!
+            self.x = xdiff
+            self.y = ydiff
+
+
+class RealOrientation(FactorioSingleType):
+    def __init__(self, deserializer):
+        self.value, = deserializer.unpack('f')
+
+
+class BoundingBox(FactorioStructType):
+    def __init__(self, deserializer):
+        self.left_top = MapPosition(deserializer)
+        self.right_bottom = MapPosition(deserializer)
+        self.orientation = RealOrientation(deserializer)
+
+
+class CliffSettings(FactorioStructType):
+    def __init__(self, deserializer):
+        self.name = String(deserializer)
+        self.cliff_elevation0, self.cliff_elevation_interval \
+            = deserializer.unpack('ff')
+
+
+class AutoplaceSettings(FactorioStructType):
+    def __init__(self, deserializer):
+        self.treat_missing_as_default, = deserializer.unpack('?')
+        self.settings = StringMap(deserializer, FrequencySizeRichness)
+
+
+class MapGenSettings(FactorioStructType):
+    def __init__(self, deserializer):
+        self.terrain_segmentation = MapGenSize(deserializer)
+        self.water = MapGenSize(deserializer)
+        self.autoplace_controls = StringMap(deserializer, FrequencySizeRichness)
+
+        if deserializer.version >= (0, 16, 0, 37):
+            self.autoplace_settings = StringMap(deserializer, AutoplaceSettings)
+            self.default_enable_all_autoplace_controls, = deserializer.unpack('?')
+
+        self.seed, self.width, self.height = deserializer.unpack('III')
+        if deserializer.version >= (0, 16, 0, 63):
+            # Noone cares about the areaToGenerateAtStart
+            BoundingBox(deserializer)
+
+        self.starting_area = MapGenSize(deserializer)
+        self.peaceful_mode, = deserializer.unpack('?')
+
+        if deserializer.version >= (0, 16, 0, 22):
+            self.starting_points = Vector(deserializer, MapPosition)
+            self.property_expression_names = StringMap(deserializer, String)
+
+        if deserializer.version >= (0, 16, 0, 63):
+            self.cliff_settings = CliffSettings(deserializer)
 
 
 def parse_map_string(map_string):
@@ -122,64 +203,18 @@ def parse_map_string(map_string):
     decoded = base64.decodebytes(map_string.encode())
     unzipped = zlib.decompress(decoded)
     buf = io.BytesIO(unzipped)
-
-    mgs = dict()
-
-    version = unpack(buf, 'hhhh')
-    print('parsed version {}'.format(version))
-
-    mgs['terrain_segmentation'] = parse_scale_byte(buf)
-    mgs['water'] = parse_scale_byte(buf)
-    mgs['autoplace_controls'] = parse_dict(buf)
-
-    # TODO?!
-    _,_ = unpack(buf, 'bb')
-    mgs['seed'], mgs['width'], mgs['height'] = unpack(buf, 'III')
-    if version >= (0, 16, 0, 63):
-        area_to_generate_at_start = parse_bounding_box(buf)
-        # noone cares about this
-
-    mgs['starting_area'] = parse_scale_byte(buf)
-    print(mgs['starting_area'])
-    mgs['peaceful_mode'], = unpack(buf, '?')
-
-    if version >= (0, 16, 0, 22):
-        starting_points = parse_vector(buf, parse_map_position)
-        property_expression_names = parse_dict(buf, parse_string, parse_string)
-
-    if version >= (0, 16, 0, 63):
-        mgs['cliff_settings'] = parse_cliff_settings(buf)
-
-    # don't care about the rest
-    return mgs
-
-
-def to_lua_str(something):
-    if isinstance(something, dict):
-        s = '{\n'
-        first = True
-        for key, value in something.items():
-            if first:
-                first = False
-            else:
-                s += ',\n'
-            s += '"{}": {}'.format(key, to_lua_str(value))
-        s += '}\n'
-        return s
-    elif isinstance(something, str):
-        return '"{}"'.format(something)
-    elif isinstance(something, bool):
-        return {True: 'true', False: 'false'}[something]
-    return str(something)
+    deserializer = Deserializer(buf)
+    map_gen_settings = MapGenSettings(deserializer)
+    return map_gen_settings
 
 
 def map_string_to_file(map_string, path):
     with open(path, 'w') as f:
-        f.write(to_lua_str(parse_map_string(map_string)))
+        json.dump(native(parse_map_string(map_string)), f)
 
 
 if __name__ == '__main__':
-    print(to_lua_str(parse_map_string(""">>>eNpjYBBgUGFgYmBl5GFJzk/MYWJl5UrOLyhILdLNL0plZGXlTC4q
+    print(parse_map_string(""">>>eNpjYBBgUGFgYmBl5GFJzk/MYWJl5UrOLyhILdLNL0plZGXlTC4q
 TUnVzc/MYWFlZUtJLU4tKmFmYGZJyQTTXKl5qbmVukmJxalAHmt6UWJ
 xMZDBkVmUnwc1gaU4MS+FlZGZtbgkPy+VFWhDSVFqajETIyN3aVFiXm
 ZpLkghMwMrA+O7mij2dRwMDKy8DAz/6xkM/v8HYSDrAgMDGAMBCyMjU
@@ -189,4 +224,4 @@ LWJKx9+3WBd+PXbBj/LPy4yXfpAR7xkzZUF+B0vd2QEl2oAZGJjgxay
 YI7IT5gAFm5gN7qNRNe8azZ0DgjT0jK0iHCIhwsAASB7yZGRgF+ICsB
 T1AQkGGAeY0O5gxIg6MaWDwDeaTxzDGZXt0f6g4MNqADJcDESdABNhC
 uMsYocxIB4iEJEIWqNWIAdn6FITnTsJsPIxkNZobVGBuMHHA4gU0ERW
-kgOcC2ZMCJ14wwx0BDMEL7DAeMG6ZGRDgg73uLNd5APo0kTo=<<<""")))
+kgOcC2ZMCJ14wwx0BDMEL7DAeMG6ZGRDgg73uLNd5APo0kTo=<<<"""))
