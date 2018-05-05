@@ -1,1 +1,1 @@
-from .bot import cli
+from .main import main
