@@ -1,11 +1,14 @@
 import asyncio
 import subprocess
 import re
+from functools import lru_cache
 from collections import OrderedDict
+
+from .logging import logger
 
 
 def entity_count(name, log_string):
-    m = re.search(r'Total {}: ([0-9,]+)'.format(name), log_string)
+    m = re.search(r'Total {}:\s*([0-9,]+)'.format(name), log_string)
     if m:
         return float(m.group(1))
     else:
@@ -18,7 +21,10 @@ class SimplePreview:
         self.lock = asyncio.Lock()
         self.entities = ['iron-ore', 'copper-ore', 'coal']
 
-    async def __call__(self, map_gen_settings_path, image_path, log_path):
+    async def __call__(self, map_gen_settings_path, image_path, log_path, scale=None):
+        extra_args = []
+        if scale is not None:
+            extra_args += '--map-preview-scale', str(float(scale))
         with await self.lock:
             with open(log_path, 'w') as log_file:
                 process = await asyncio.create_subprocess_exec(
@@ -26,6 +32,7 @@ class SimplePreview:
                     '--generate-map-preview', image_path,
                     '--map-gen-settings', map_gen_settings_path,
                     '--report-quantities', ','.join(self.entities),
+                    *extra_args,
                     stdout=log_file, stderr=subprocess.STDOUT
                 )
                 # TODO use wait_for with timeout
@@ -40,4 +47,5 @@ class SimplePreview:
             )
             with open(log_path, 'w') as log_file:
                 log_file.write(log_string)
+            logger.info('Detected entities: {}', entities)
             return entities
