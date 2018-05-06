@@ -1,6 +1,6 @@
 from setuptools import setup
 
-setup(name='factorio-discord-map-preview-bot',
+setup(name='factorio_discord_map_preview_bot',
       version='0.0',
       author='Zulan',
       python_requires=">=3.5",
@@ -9,5 +9,5 @@ setup(name='factorio-discord-map-preview-bot',
       install_requires=['discord.py', 'click', 'click_log'],
       entry_points='''
         [console_scripts]
-        factorio-discord-map-preview-bot=factorio_discord_map_preview_bot:main
+        factorio_discord_map_preview_bot=factorio_discord_map_preview_bot:main
       ''')
