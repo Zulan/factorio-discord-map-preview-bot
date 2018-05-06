@@ -102,6 +102,8 @@ class Bot(discord.Client):
     async def preview(self, command, channel, author):
         time_start = time.time()
         try:
+            await self.send_typing(channel)
+
             scale = None
             while command[0].startswith('--'):
                 if command[0] == '--scale':
