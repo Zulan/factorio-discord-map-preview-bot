@@ -1,8 +1,8 @@
 import asyncio
 import subprocess
 import re
-from functools import lru_cache
 from collections import OrderedDict
+import re
 
 from .logging import logger
 
@@ -49,3 +49,13 @@ class SimplePreview:
                 log_file.write(log_string)
             logger.info('Detected entities: {}', entities)
             return entities
+
+    async def get_version_str(self):
+        with await self.lock:
+            process = await asyncio.create_subprocess_exec(
+                self.binary, '--version', stdout=subprocess.PIPE)
+            output, _ = await process.communicate()
+            match = re.search(r'Version: ([\.0-9]+)', output.decode())
+            if not match:
+                return '???'
+            return match.group(1)

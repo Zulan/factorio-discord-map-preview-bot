@@ -7,7 +7,7 @@ from numbers import Number
 
 import discord
 
-from .map_string import map_string_to_file
+from .map_string import parse_map_string, dump_map_gen_settings, known_version
 from .logging import logger
 from .error import BotError
 
@@ -80,6 +80,24 @@ class Bot(discord.Client):
             if len(cmd) >= 1:
                 if cmd[0] == '!mapPreview':
                     await self.preview(cmd[1:], message.channel, message.author)
+                if cmd[0] == '!info':
+                    await self.info(message.author)
+
+    async def info(self, author):
+        fmt =  "Hi, I'm the MapPreviewBot!\n"
+        fmt += "I generate Factorio map previews in Discord.\n"
+        fmt += "I know the following commands:\n"
+        fmt += "`!mapPreview`, `!info`\n"
+        fmt += "My owner is {owner}, let him know if something is wrong.\n"
+        fmt += "You can find my source code at https://github.com/Zulan/factorio-discord-map-preview-bot/.\n"
+        fmt += "I use Factorio Version {factorio_version} and know map exchange strings up to {mapstring_version}."
+
+        text = fmt.format(
+            owner=self.owner.mention,
+            factorio_version=await self.generate_preview.get_version_str(),
+            mapstring_version=known_version,
+        )
+        await self.send_message(author, content=text)
 
     async def preview(self, command, channel, author):
         time_start = time.time()
@@ -102,7 +120,13 @@ class Bot(discord.Client):
             maps_gen_settings_path = self.format_dir('{}.json', uid)
             log_path = self.format_dir('{}.log', uid)
 
-            map_string_to_file(map_string, maps_gen_settings_path)
+            map_gen_settings, version_mismatch = parse_map_string(map_string)
+            if version_mismatch:
+                await self.send_message(
+                    channel,
+                    content='The version of this map exchange string {} is too recent, there may be problems.'.format()
+                )
+            dump_map_gen_settings(map_gen_settings, maps_gen_settings_path)
 
         except BotError as be:
             await self.send_message(

@@ -6,7 +6,10 @@ import json
 from collections import OrderedDict
 from abc import ABC, abstractmethod
 
-#from .error import BotError
+from .error import BotError
+
+
+known_version = (0, 16, 42, 0)
 
 
 def parse_frame(map_string):
@@ -199,18 +202,30 @@ class MapGenSettings(FactorioStructType):
 
 def parse_map_string(map_string):
     map_string = parse_frame(map_string)
-
-    decoded = base64.decodebytes(map_string.encode())
+    try:
+        decoded = base64.decodebytes(map_string.encode())
+    except Exception:
+        raise BotError('could not decode map exchange string - maybe it is incomplete')
     unzipped = zlib.decompress(decoded)
-    buf = io.BytesIO(unzipped)
+    try:
+        buf = io.BytesIO(unzipped)
+    except Exception:
+        raise BotError('could not decompress map exchange string')
     deserializer = Deserializer(buf)
-    map_gen_settings = MapGenSettings(deserializer)
-    return map_gen_settings
+    version_mismatch = deserializer if known_version < deserializer.version else False
+    try:
+        map_gen_settings = MapGenSettings(deserializer)
+        return map_gen_settings, version_mismatch
+    except Exception:
+        if version_mismatch:
+            raise BotError('the version of this map exchange string {} is too recent and there was a parse error.'
+                           .format(version_mismatch))
+        raise BotError('could not parse map exchange string structure')
 
 
-def map_string_to_file(map_string, path):
+def dump_map_gen_settings(map_gen_settings, path):
     with open(path, 'w') as f:
-        json.dump(native(parse_map_string(map_string)), f)
+        json.dump(native(map_gen_settings), f)
 
 
 if __name__ == '__main__':
