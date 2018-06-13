@@ -126,7 +126,8 @@ class Bot(discord.Client):
             if version_mismatch:
                 await self.send_message(
                     channel,
-                    content='The version of this map exchange string is too recent, there may be problems.'
+                    content='The version of this map exchange string is too recent' 
+                            '({}, i know up to {}), there may be problems.'.format(*version_mismatch)
                 )
             dump_map_gen_settings(map_gen_settings, maps_gen_settings_path)
 

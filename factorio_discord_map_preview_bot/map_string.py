@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from .error import BotError
 
 
-known_version = (0, 16, 42, 0)
+known_version = (0, 16, 50, 0)
 
 
 def parse_frame(map_string):
@@ -212,7 +212,7 @@ def parse_map_string(map_string):
     except Exception:
         raise BotError('could not decompress map exchange string')
     deserializer = Deserializer(buf)
-    version_mismatch = deserializer if known_version < deserializer.version else False
+    version_mismatch = (deserializer.version, known_version) if known_version < deserializer.version else False
     try:
         map_gen_settings = MapGenSettings(deserializer)
         return map_gen_settings, version_mismatch
