@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from .error import BotError
 
 
-known_version = (0, 16, 50, 0)
+known_version = (0, 16, 51, 0)
 
 
 def parse_frame(map_string):
