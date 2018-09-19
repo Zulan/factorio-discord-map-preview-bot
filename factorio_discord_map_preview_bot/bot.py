@@ -58,9 +58,9 @@ class Bot(discord.Client):
         if self.owner_id:
             self.owner = await self.get_user_info(self.owner_id)
             logger.info('Got owner info {}', self.owner)
-            await self.send_message(self.owner, "I'm ready")
+            await self.owner.send("I'm ready")
 
-        for emoji in self.get_all_emojis():
+        for emoji in self.emojis:
             name = emoji.name.replace('_', '-')
             if name in self.generate_preview.entities:
                 self.entity_emojis[name] = emoji
@@ -70,7 +70,7 @@ class Bot(discord.Client):
         message = 'Exception in {} ({}, {}): {}'.format(event_method, args, kwargs, traceback.format_exc())
         logger.error(message)
         if self.owner:
-            await self.send_message(self.owner, message)
+            await self.owner.send(message)
 
     async def on_message(self, message):
         if message.content.startswith('!'):
@@ -97,73 +97,59 @@ class Bot(discord.Client):
             factorio_version=await self.generate_preview.get_version_str(),
             mapstring_version=known_version,
         )
-        await self.send_message(author, content=text)
+        await author.send(content=text)
 
     async def preview(self, command, channel, author):
-        time_start = time.time()
-        try:
-            await self.send_typing(channel)
+        async with channel.typing():
+            time_start = time.time()
+            try:
+                scale = None
+                while command[0].startswith('--'):
+                    if command[0] == '--scale':
+                        scale = float(command[1])
+                        if scale < 0.1:
+                            raise BotError('selected scale is too small')
+                        if scale > 100:
+                            raise BotError('selected scale is too large')
+                        command = command[2:]
+                    else:
+                        raise BotError("unknown option")
 
-            scale = None
-            while command[0].startswith('--'):
-                if command[0] == '--scale':
-                    scale = float(command[1])
-                    if scale < 0.1:
-                        raise BotError('selected scale is too small')
-                    if scale > 100:
-                        raise BotError('selected scale is too large')
-                    command = command[2:]
-                else:
-                    raise BotError("unknown option")
+                map_string = ''.join(command)
+                uid = uuid.uuid4().hex
+                image_path = self.format_dir('{}.png', uid)
+                maps_gen_settings_path = self.format_dir('{}.json', uid)
+                log_path = self.format_dir('{}.log', uid)
 
-            map_string = ''.join(command)
-            uid = uuid.uuid4().hex
-            image_path = self.format_dir('{}.png', uid)
-            maps_gen_settings_path = self.format_dir('{}.json', uid)
-            log_path = self.format_dir('{}.log', uid)
+                map_gen_settings, version_mismatch = parse_map_string(map_string)
+                if version_mismatch:
+                    await channel.send(
+                        content='The version of this map exchange string is too recent' 
+                                '({}, i know up to {}), there may be problems.'.format(*version_mismatch)
+                    )
+                dump_map_gen_settings(map_gen_settings, maps_gen_settings_path)
 
-            map_gen_settings, version_mismatch = parse_map_string(map_string)
-            if version_mismatch:
-                await self.send_message(
-                    channel,
-                    content='The version of this map exchange string is too recent' 
-                            '({}, i know up to {}), there may be problems.'.format(*version_mismatch)
-                )
-            dump_map_gen_settings(map_gen_settings, maps_gen_settings_path)
+            except BotError as be:
+                await channel.send('Sorry {}, {}.'.format(author.mention, be))
+                logger.info('BotError: {}', be)
+                return
+            except Exception as e:
+                await channel.send(content="Sorry {}, something went wrong parsing your map string.".format(author.mention))
+                raise e
 
-        except BotError as be:
-            await self.send_message(
-                channel,
-                'Sorry {}, {}.'.format(author.mention, be)
+            try:
+                entities = await self.generate_preview(maps_gen_settings_path, image_path, log_path, scale)
+            except BotError as be:
+                await channel.send('Sorry {}, {}'.format(author.mention, be))
+                logger.info('BotError: {}', be)
+                return
+            except Exception as e:
+                await channel.send("Sorry {}, something went wrong generating your map preview.".format(author.mention))
+                raise e
+
+            logger.info('completed request {} in {} s', uid, time.time() - time_start)
+            entity_info = ', '.join(self.format_entity(*e) for e in entities.items())
+            await channel.send(
+                "Here's your preview {}: {}".format(author.mention, entity_info),
+                file=discord.File(image_path)
             )
-            logger.info('BotError: {}', be)
-            return
-        except Exception as e:
-            await self.send_message(
-                channel,
-                content="Sorry {}, something went wrong parsing your map string.".format(author.mention)
-            )
-            raise e
-
-        try:
-            entities = await self.generate_preview(maps_gen_settings_path, image_path, log_path, scale)
-        except BotError as be:
-            await self.send_message(
-                channel,
-                'Sorry {}, {}'.format(author.mention, be)
-            )
-            logger.info('BotError: {}', be)
-            return
-        except Exception as e:
-            await self.send_message(
-                channel,
-                "Sorry {}, something went wrong generating your map preview.".format(author.mention)
-            )
-            raise e
-
-        logger.info('completed request {} in {} s', uid, time.time() - time_start)
-        entity_info = ', '.join(self.format_entity(*e) for e in entities.items())
-        await self.send_file(
-            channel, image_path,
-            content="Here's your preview {}: {}".format(author.mention, entity_info)
-        )
