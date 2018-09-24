@@ -78,7 +78,7 @@ class Bot(discord.Client):
                          message.author, message.channel, message.content)
             cmd = message.content.split(' ')
             if len(cmd) >= 1:
-                if cmd[0] == '!mapPreview':
+                if cmd[0] == '!preview' or cmd[0] == '!Preview':
                     await self.preview(cmd[1:], message.channel, message.author)
                 if cmd[0] == '!info':
                     await self.info(message.author)
