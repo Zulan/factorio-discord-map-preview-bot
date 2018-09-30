@@ -87,7 +87,7 @@ class Bot(discord.Client):
         fmt =  "Hi, I'm the MapPreviewBot!\n"
         fmt += "I generate Factorio map previews in Discord.\n"
         fmt += "I know the following commands:\n"
-        fmt += "`!mapPreview`, `!info`\n"
+        fmt += "`!preview`, `!info`\n"
         fmt += "My owner is {owner}, let him know if something is wrong.\n"
         fmt += "You can find my source code at https://github.com/Zulan/factorio-discord-map-preview-bot/.\n"
         fmt += "I use Factorio Version {factorio_version} and know map exchange strings up to {mapstring_version}."
