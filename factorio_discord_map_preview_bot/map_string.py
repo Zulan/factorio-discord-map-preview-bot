@@ -6,10 +6,10 @@ import json
 from collections import OrderedDict
 from abc import ABC, abstractmethod
 
-from .error import BotError
+from error import BotError
 
 
-known_version = (0, 16, 51, 0)
+known_version = (0, 17, 45, 1)
 
 
 def parse_frame(map_string):
@@ -76,17 +76,23 @@ class String(FactorioSingleType):
 
 class MapGenSize(FactorioSingleType):
     def __init__(self, deserializer):
-        self.value, = deserializer.unpack('B')
+        if deserializer.version >= (0, 17, 0, 0):
+            self.value, = deserializer.unpack('f')
+        else:
+            self.value, = deserializer.unpack('B')
 
     def __str__(self):
-        return {
-            0: 'none',
-            1: 'very-low',
-            2: 'low',
-            3: 'normal',
-            4: 'high',
-            5: 'very-high',
-        }[self.value]
+        if isinstance(self.value,float):
+            return str(self.value)
+        else:
+            return {
+                0: 'none',
+                1: 'very-low',
+                2: 'low',
+                3: 'normal',
+                4: 'high',
+                5: 'very-high',
+            }[self.value]
 
     def native(self):
         return str(self)
@@ -176,6 +182,9 @@ class AutoplaceSettings(FactorioStructType):
 
 class MapGenSettings(FactorioStructType):
     def __init__(self, deserializer):
+        # Random zero byte after version, Bilka told me to ignore it
+        if deserializer.version >= (0, 17, 0, 0):
+            deserializer.unpack('B')
         self.terrain_segmentation = MapGenSize(deserializer)
         self.water = MapGenSize(deserializer)
         self.autoplace_controls = StringMap(deserializer, FrequencySizeRichness)
@@ -229,14 +238,17 @@ def dump_map_gen_settings(map_gen_settings, path):
 
 
 if __name__ == '__main__':
-    print(parse_map_string(""">>>eNpjYBBgUGFgYmBl5GFJzk/MYWJl5UrOLyhILdLNL0plZGXlTC4q
-TUnVzc/MYWFlZUtJLU4tKmFmYGZJyQTTXKl5qbmVukmJxalAHmt6UWJ
-xMZDBkVmUnwc1gaU4MS+FlZGZtbgkPy+VFWhDSVFqajETIyN3aVFiXm
-ZpLkghMwMrA+O7mij2dRwMDKy8DAz/6xkM/v8HYSDrAgMDGAMBCyMjU
-AAGWJNzMtPSGBgaXBgYFBwZGRirRda5P6yaYs8IkddzgDI+QEUidkNF
-HrRCGRGroYyOw1CGw3wYox7G6HdgNAaDz/YIBsSuEqDJUEs4HBAMiGQ
-LWJKx9+3WBd+PXbBj/LPy4yXfpAR7xkzZUF+B0vd2QEl2oAZGJjgxay
-YI7IT5gAFm5gN7qNRNe8azZ0DgjT0jK0iHCIhwsAASB7yZGRgF+ICsB
-T1AQkGGAeY0O5gxIg6MaWDwDeaTxzDGZXt0f6g4MNqADJcDESdABNhC
-uMsYocxIB4iEJEIWqNWIAdn6FITnTsJsPIxkNZobVGBuMHHA4gU0ERW
-kgOcC2ZMCJ14wwx0BDMEL7DAeMG6ZGRDgg73uLNd5APo0kTo=<<<"""))
+    print(parse_map_string(""">>>eNpjYBBk0GVgZACCBnsgYc/BkpyfmMPAcMABhrmS8wsKUot08
+4tSkYU5k4tKU1J18zNRFafmpeZW6iYlFqdCTQSbzJFZlJ+HbgJrc
+Ul+Hlhk9apV9iDMWlKUmloM1ACUd7AHaeQuLUrMyyzNBeldvUrLD
+mQcmGY0tuN50dAixwDC/+sZFP7/B2Eg6wFQyQMGBpjVDIxAMShg1
+kjOzyspys/RLU4tKcnMS7dKLK2wSitKLSxNzUuutMotzSnJLMjJT
+C3iMNAzNzUAAll0Hbn5mcUlpUWpVkmZicWcugZ6YGUGujjVYTXeT
+A+sy4A1OSczLY2BQcERiJ1AbmRkZKwWWef+sGqKPSPE1XoOUMYHq
+MiBJJiIJ4zh54BTSgXGMEEyxxgMPiMxIJaWAK2AquJwQDAgki0gS
+UbG3rdbF3w/dsGO8c/Kj5d8kxLsGQ1dRd59MFpnB5RkB3mBCU7Mm
+gkCO2FeYYCZ+cAeKnXTnvHsGRB4Y8/ICtIhAiIcLIDEAW9mBkYBP
+iBrQQ+QUJBhgDnNDmaMiANjGhh8g/nkMYxx2R7dH8CAsAEZLgciT
+oAIsIVwlzFCmZEOEAlJhCxQqxEDsvUpCM+dhNl4GMlqNDdgxgGyF
+9BEVJACngtkTwqceMEMdwQwBC+ww3gO9Q7MDAjwwZ7BJ/BxFwCn7
+9XS<<<"""))
