@@ -172,6 +172,8 @@ class CliffSettings(FactorioStructType):
         self.name = String(deserializer)
         self.cliff_elevation0, self.cliff_elevation_interval \
             = deserializer.unpack('ff')
+        if deserializer.version >= (0, 17, 0, 0):
+            self.richness = MapGenSize(deserializer)
 
 
 class AutoplaceSettings(FactorioStructType):
@@ -208,6 +210,8 @@ class MapGenSettings(FactorioStructType):
         if deserializer.version >= (0, 16, 0, 63):
             self.cliff_settings = CliffSettings(deserializer)
 
+        #After CliffSettings comes MapSettings but they're not needed for previews.
+        
 
 def parse_map_string(map_string):
     map_string = parse_frame(map_string)
