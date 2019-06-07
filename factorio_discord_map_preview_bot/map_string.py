@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from .error import BotError
 
 
-known_version = (0, 16, 51, 0)
+known_version = (0, 17, 51, 0)
 
 
 def parse_frame(map_string):
@@ -20,6 +20,9 @@ class Deserializer:
     def __init__(self, buffer):
         self._buffer = buffer
         self.version = self.unpack('hhhh')
+        if self.version >= (0, 17, 0, 30):
+            self.unpack('B')
+            # probably 0 but we don't care
 
     def parse_uint(self):
         num, = self.unpack('B')
@@ -76,17 +79,22 @@ class String(FactorioSingleType):
 
 class MapGenSize(FactorioSingleType):
     def __init__(self, deserializer):
-        self.value, = deserializer.unpack('B')
+        if deserializer.version < (0, 17, 0, 77):
+            self.value, = deserializer.unpack('B')
+        else:
+            self.value, = deserializer.unpack('f')
 
     def __str__(self):
-        return {
-            0: 'none',
-            1: 'very-low',
-            2: 'low',
-            3: 'normal',
-            4: 'high',
-            5: 'very-high',
-        }[self.value]
+        if isinstance(self.value, int):
+            return {
+                0: 'none',
+                1: 'very-low',
+                2: 'low',
+                3: 'normal',
+                4: 'high',
+                5: 'very-high',
+            }[self.value]
+        return str(self.value)
 
     def native(self):
         return str(self)
@@ -166,6 +174,8 @@ class CliffSettings(FactorioStructType):
         self.name = String(deserializer)
         self.cliff_elevation0, self.cliff_elevation_interval \
             = deserializer.unpack('ff')
+        if deserializer.version >= (0, 17, 0, 124):
+            self.richness, = deserializer.unpack('f')
 
 
 class AutoplaceSettings(FactorioStructType):
